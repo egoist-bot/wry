@@ -159,9 +159,16 @@ extern "C" fn start_task(
       ///    Outdated custom handler may call to the new task instance and cause segfault.
       fn check_task_is_valid(
         webview: &WryWebView,
+        webview_id: &str,
         task_key: usize,
         current_uuid: Retained<NSUUID>,
       ) -> crate::Result<()> {
+        // First ensure the webview id is still valid.
+        if !WEBVIEW_IDS.lock().unwrap().contains(webview_id) {
+          return Err(crate::Error::CustomProtocolTaskInvalid);
+        }
+
+        // Now safely access ivars.
         let latest_task_uuid = webview.get_custom_task_uuid(task_key);
         if let Some(latest_uuid) = latest_task_uuid {
           if latest_uuid != current_uuid {
@@ -181,7 +188,7 @@ extern "C" fn start_task(
               // Consolidate checks before calling into `did*` methods.
               let validate = || -> crate::Result<()> {
                 check_webview_id_valid(webview_id)?;
-                check_task_is_valid(webview, task_key, task_uuid.clone())?;
+                check_task_is_valid(webview, webview_id, task_key, task_uuid.clone())?;
                 Ok(())
               };
 
@@ -205,7 +212,7 @@ extern "C" fn start_task(
               ) -> crate::Result<()> {
                 // Validate
                 check_webview_id_valid(webview_id)?;
-                check_task_is_valid(webview, task_key, task_uuid.clone())?;
+                check_task_is_valid(webview, webview_id, task_key, task_uuid.clone())?;
 
                 let content = sent_response.body();
                 // default: application/octet-stream, but should be provided by the client
@@ -249,7 +256,7 @@ extern "C" fn start_task(
 
                 // Re-validate before calling didReceiveResponse
                 check_webview_id_valid(webview_id)?;
-                check_task_is_valid(webview, task_key, task_uuid.clone())?;
+                check_task_is_valid(webview, webview_id, task_key, task_uuid.clone())?;
 
                 // Use map_err to convert Option<Retained<Exception>> to crate::Error
                 objc2::exception::catch(AssertUnwindSafe(|| {
@@ -269,7 +276,7 @@ extern "C" fn start_task(
 
                 // Check validity again
                 check_webview_id_valid(webview_id)?;
-                check_task_is_valid(webview, task_key, task_uuid.clone())?;
+                check_task_is_valid(webview, webview_id, task_key, task_uuid.clone())?;
 
                 objc2::exception::catch(AssertUnwindSafe(|| {
                   task.didReceiveData(&data);
@@ -277,7 +284,7 @@ extern "C" fn start_task(
                 .map_err(|_e| crate::Error::CustomProtocolTaskInvalid)?;
 
                 check_webview_id_valid(webview_id)?;
-                check_task_is_valid(webview, task_key, task_uuid.clone())?;
+                check_task_is_valid(webview, webview_id, task_key, task_uuid.clone())?;
 
                 objc2::exception::catch(AssertUnwindSafe(|| {
                   task.didFinish();
